@@ -1,2 +1,2 @@
 if __name__ == "__main__":
-    print 'Main function of TY - good!'
+    print 'Main function of TY.'
