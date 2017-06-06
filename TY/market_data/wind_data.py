@@ -10,22 +10,24 @@ from pandas.tseries.offsets import *
 
 MARKET_DATA_DIR = 'D:/marketdata/SH'
 LOAD_MARKET_DATA_LOG = 'D:/marketdata/log.txt'
-INDICATORS = ['PRECLOSE', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'VOLUME', 'AMT', 'DEALNUM', 'ADJFACTOR', 'TURN']
+INDICATORS = ['OPEN', 'HIGH', 'LOW', 'CLOSE', 'VOLUME', 'AMT', 'DEALNUM', 'ADJFACTOR', 'TURN']
 
 '''
 万德历史数据
 指标名称        指标代码
 
-前收盘价       PRECLOSE
+前收盘价       PRE_CLOSE
 开盘价         OPEN
 最高价         HIGH
 最低价         LOW
 收盘价         CLOSE
-均价           AVGPRICE
+均价           VWAP
 成交量         VOLUME
-成交额         AMOUNT
+成交额         AMT
+成交笔数       DEALNUM
+振幅           SWING
 涨跌           CHANGE
-涨跌幅(%)      PCTCHG
+涨跌幅(%)      PCT_CHG
 换手率(%)      TURN
 '''
 
@@ -135,15 +137,10 @@ def wind_get_stock_historical_market_data(stock_ids=None, indicators=INDICATORS,
             # If the file exist append the new market data
             if os.path.isfile(file_name):
                 need_header = False
-                with open(file_name, 'r') as f:
-                    a = f.readlines()
-                    last_line = f.readlines()[-1]
-                last_line_data = last_line.split('\t')
-                old_date_str = last_line_data[0][0:10]
-                old_date_time = datetime.datetime.strptime(old_date_str, '%Y-%m-%d')
+                df_old = DataFrame.from_csv(file_name)
+                old_date_time = df_old.index.tolist()[0]
                 new_date_time = old_date_time + datetime.timedelta(1)
                 new_date_str = new_date_time.strftime('%Y-%m-%d')
-
                 if new_date_time > datetime.datetime.today():
                     continue
             # default to get one year market data
@@ -151,17 +148,9 @@ def wind_get_stock_historical_market_data(stock_ids=None, indicators=INDICATORS,
                 need_header = True
                 new_date_str = datetime.datetime.today() - datetime.timedelta(365)
 
-            stock = w.wsd(stock_id, ','.join(indicators), new_date_str, datetime.datetime.today(), "PriceAdj=F")
+            stock = w.wsd(stock_id, indicators, new_date_str, datetime.datetime.today(), "PriceAdj=F")
 
-            fields = stock.Fields
-            times = stock.Times
-            data = stock.Data
-            stock_dict = dict()
-            i = 0
-            for field in fields:
-                stock_dict[field] = data[i]
-                i += 1
-            df = DataFrame(stock_dict, index=times)
+            df = wind_data_to_dataframe(stock)
             df.to_csv(file_name, mode='a', sep=',', header=need_header)
             print 'Finish updating market data for ' + stock_id + ', time used ' + str(time.time() - time_start) + '.'
 
