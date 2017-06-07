@@ -52,6 +52,7 @@ def wind_data_to_dataframe(wind_data, index_type='Times'):
     fields = wind_data.Fields
     if index_type == 'Times':
         index = wind_data.Times
+        new_index = [x.date() for x in index]
     elif index_type == 'Codes':
         index = wind_data.Codes
     data = wind_data.Data
@@ -60,7 +61,7 @@ def wind_data_to_dataframe(wind_data, index_type='Times'):
     for field in fields:
         stock_dict[field] = data[i]
         i += 1
-    df = DataFrame(stock_dict, index=index)
+    df = DataFrame(stock_dict, index=new_index)
     return df
 
 
@@ -133,27 +134,57 @@ def wind_get_stock_historical_market_data(stock_ids=None, indicators=INDICATORS,
         try:
             time_start = time.time()
             file_name = os.path.join(MARKET_DATA_DIR, stock_id + '.csv')
-            last_line = None
             # If the file exist append the new market data
             if os.path.isfile(file_name):
                 need_header = False
                 df_old = DataFrame.from_csv(file_name)
-                old_date_time = df_old.index.tolist()[0]
+                old_date_time = df_old.index.tolist()[-1]
                 new_date_time = old_date_time + datetime.timedelta(1)
-                new_date_str = new_date_time.strftime('%Y-%m-%d')
                 if new_date_time > datetime.datetime.today():
                     continue
             # default to get one year market data
             else:
                 need_header = True
-                new_date_str = datetime.datetime.today() - datetime.timedelta(365)
+                new_date_time = datetime.date.today() - datetime.timedelta(365)
 
-            stock = w.wsd(stock_id, indicators, new_date_str, datetime.datetime.today(), "PriceAdj=F")
+            stock = w.wsd(stock_id, indicators, new_date_time, datetime.datetime.today(), "PriceAdj=F")
 
             df = wind_data_to_dataframe(stock)
             df.to_csv(file_name, mode='a', sep=',', header=need_header)
             print 'Finish updating market data for ' + stock_id + ', time used ' + str(time.time() - time_start) + '.'
 
+        except Exception, e:
+            log_file.write('Error updating market data for ' + stock_id + '.' + e.message)
+    log_file.close()
+    w.stop()
+
+
+def wind_add_new_column(stock_ids=None, indicators=None):
+    w.start()
+    if stock_ids is None:
+        stock_ids = load_stock_codes()
+    log_file = open(LOAD_MARKET_DATA_LOG, 'w')
+    for stock_id in stock_ids:
+        try:
+            time_start = time.time()
+            file_name = os.path.join(MARKET_DATA_DIR, stock_id + '.csv')
+            df = DataFrame.from_csv(file_name)
+
+            columns = list(df)
+            new_indicators = []
+            for indicator in indicators:
+                if indicator in columns: continue
+                else:
+                    new_indicators.append(indicator)
+
+            if len(new_indicators) > 0:
+                first_date = df.index.tolist()[0]
+                last_date = df.index.tolist()[-1]
+                stock = w.wsd(stock_id, new_indicators, first_date, last_date, "PriceAdj=F")
+                for i in range(0, len(new_indicators)):
+                    df[stock.Fields[i]] = stock.Data[i]
+                df.to_csv(file_name, sep=',')
+                print 'Finish updating market data for ' + stock_id + ', time used ' + str(time.time() - time_start) + '.'
         except Exception, e:
             log_file.write('Error updating market data for ' + stock_id + '.' + e.message)
     log_file.close()
